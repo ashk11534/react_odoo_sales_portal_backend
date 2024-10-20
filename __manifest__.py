@@ -6,7 +6,7 @@
     'description': """Developed by Md. Ashikuzzaman.""",
     'category': '',
     'website': '',
-    'depends': ['sale'],
+    'depends': ['sale', 'product', 'project', 'base'],
     'data': [
         'views/views.xml'
     ],
