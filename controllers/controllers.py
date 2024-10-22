@@ -5,7 +5,7 @@ from odoo.http import request as req
 
 
 class LoginPortalUser(http.Controller):
-    @http.route('/login-react-sales-portal-user', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False,
+    @http.route('/login-react-sales-portal-user', type='http', auth='public', methods=['POST', 'OPTIONS'], csrf=False,
                 cors='*')
     def login_portal_user(self, **kwargs):
         form_data = req.httprequest.form
@@ -52,7 +52,7 @@ class LoginPortalUser(http.Controller):
 
 
 class SearchUser(http.Controller):
-    @http.route('/search-user', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    @http.route('/search-user', type='http', auth='public', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
     def search_user(self, **kwargs):
         form_data = req.httprequest.form
         user_id = int(form_data.get('userId')) if form_data.get('userId') else None
@@ -71,7 +71,7 @@ class SearchUser(http.Controller):
 
 
 class RetrieveQuotations(http.Controller):
-    @http.route('/retrieve-quotations', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    @http.route('/retrieve-quotations', type='http', auth='public', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
     def retrieve_quotations(self, **kwargs):
         form_data = req.httprequest.form
         user_id = int(form_data.get('userId')) if form_data.get('userId') else None
@@ -89,6 +89,7 @@ class RetrieveQuotations(http.Controller):
                 'order_date': quotation.format_order_date(),
                 'customer_name': quotation.partner_id.name,
                 'amount_total': quotation.amount_total,
+                'currency': req.env.company.currency_id.symbol
             })
 
         return req.make_response(json.dumps({'code': 200, 'quotation_data': data}), headers=[
@@ -98,7 +99,7 @@ class RetrieveQuotations(http.Controller):
 
 
 class SearchCustomer(http.Controller):
-    @http.route('/search-customer', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    @http.route('/search-customer', type='http', auth='public', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
     def search_customer(self, **kwargs):
         form_data = req.httprequest.form
         customer_name = form_data.get('customerName').strip() if form_data.get('customerName') else None
@@ -119,7 +120,7 @@ class SearchCustomer(http.Controller):
 
 
 class SearchProduct(http.Controller):
-    @http.route('/search-product', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    @http.route('/search-product', type='http', auth='public', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
     def search_product(self, **kwargs):
         form_data = req.httprequest.form
         product_name = form_data.get('productName').strip() if form_data.get('productName') else None
@@ -143,15 +144,12 @@ class SearchProduct(http.Controller):
 class CreateQuotation(http.Controller):
     @http.route('/create-quotation', type='http', auth='public', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
     def create_quotation(self, **kwargs):
-        print(req.session.uid)
         form_data = req.httprequest.form
         sales_person_id = int(form_data.get('salesPersonId')) if form_data.get('salesPersonId') else None
         customer_id = int(form_data.get('selectedCustomerId')) if form_data.get('selectedCustomerId') else None
         expiration_date = form_data.get('expirationDate')
         quotation_date = form_data.get('quotationDate')
         products = json.loads(form_data.get('selectedProducts')) if form_data.get('selectedProducts') else []
-
-        print(products)
 
         # Creating a new quotation (start)
 
@@ -204,3 +202,40 @@ class CreateQuotation(http.Controller):
         return req.render('ultima.test_session_template', {
             'session': req.session.context
         })
+
+class FilterQuotation(http.Controller):
+    @http.route('/filter-quotation', type='http', auth='public', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    def filter_quotation(self, **kwargs):
+
+        form_data = req.httprequest.form
+
+        filter_val = form_data.get('filterVal')
+
+        user_id = int(form_data.get('userId')) if form_data.get('userId') else None
+
+        user = req.env['res.users'].sudo().browse(user_id)
+
+        if filter_val == 'all':
+
+            quotations = req.env['sale.order'].sudo().search([('react_portal_sales_person', '=', user.id)])
+
+        else:
+            quotations = req.env['sale.order'].sudo().search([('state', '=', filter_val), ('react_portal_sales_person', '=', user.id)])
+
+        data = []
+
+        for quotation in quotations:
+            data.append({
+                'quotation_id': quotation.id,
+                'quotation_state': quotation.state,
+                'quotation_name': quotation.name,
+                'order_date': quotation.format_order_date(),
+                'customer_name': quotation.partner_id.name,
+                'amount_total': quotation.amount_total,
+                'currency': req.env.company.currency_id.symbol
+            })
+
+        return req.make_response(json.dumps({'code': 200, 'quotation_data': data}), headers=[
+            ('Content-Type', 'application/json'),
+            ('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        ])
