@@ -162,28 +162,31 @@ class CreateQuotation(http.Controller):
         })
 
         # print(new_quotation)
-        for product in products:
-            uom = req.env['product.product'].sudo().search([('product_tmpl_id', '=', int(product.get('product_id')))]).uom_id
-            product_obj = req.env['product.product'].sudo().search(
-                [('product_tmpl_id', '=', int(product.get('product_id')))], limit=1)
+        if products:
+            for product in products:
+                uom = req.env['product.product'].sudo().search([('product_tmpl_id', '=', int(product.get('product_id')))]).uom_id
+                product_obj = req.env['product.product'].sudo().search(
+                    [('product_tmpl_id', '=', int(product.get('product_id')))], limit=1)
 
-            req.env['sale.order.line'].sudo().create({
-                'product_id': product_obj.id,
-                'name': product_obj.name,
-                'product_uom_qty': int(product.get('product_qty')),
-                'product_uom': uom.id,
-                'price_unit': float(product.get('product_price')),
-                'order_id': new_quotation.id,
-                'customer_lead': 1,
-                'tax_id': False,
-                'company_id': 1,
-                'price_reduce_taxexcl': 0.0,
-                'price_reduce_taxinc': 0.0,
-                'price_subtotal': 0.0,
-                'price_tax': 0.0,
-                'price_total': 0.0
-            })
+                req.env['sale.order.line'].sudo().create({
+                    'product_id': product_obj.id,
+                    'name': product_obj.name,
+                    'product_uom_qty': int(product.get('product_qty')),
+                    'product_uom': uom.id,
+                    'price_unit': float(product.get('product_price')),
+                    'order_id': new_quotation.id,
+                    'customer_lead': 1,
+                    'tax_id': False,
+                    'company_id': 1,
+                    'price_reduce_taxexcl': 0.0,
+                    'price_reduce_taxinc': 0.0,
+                    'price_subtotal': int(product.get('product_qty')) * float(product.get('product_price')),
+                    'price_tax': 0.0,
+                    'price_total': int(product.get('product_qty')) * float(product.get('product_price')),
+                })
 
+            new_quotation.sudo().action_confirm()
+        else:
             new_quotation.sudo().action_confirm()
 
         # Creating a new quotation (end)
@@ -236,6 +239,71 @@ class FilterQuotation(http.Controller):
             })
 
         return req.make_response(json.dumps({'code': 200, 'quotation_data': data}), headers=[
+            ('Content-Type', 'application/json'),
+            ('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        ])
+
+
+class QuotationDetails(http.Controller):
+    @http.route('/quotation-details/<int:quotation_id>', type='http', auth='public', methods=['GET', 'OPTIONS'], cors='*')
+    def quotation_details(self, quotation_id):
+        quotation_obj = req.env['sale.order'].sudo().search([('id', '=', quotation_id)])
+
+        order_lines_list = []
+
+        for line in quotation_obj.order_line:
+            order_lines_list.append({
+                'order_line_id': line.id,
+                'product_name': line.product_id.name,
+                'product_quantity': line.product_uom_qty,
+                'product_price': line.price_unit,
+                'currency': req.env.company.currency_id.symbol
+            })
+
+        data = {
+            'quotation_id': quotation_obj.id,
+            'quotation_name': quotation_obj.name,
+            'quotation_state': quotation_obj.state,
+            'customer_name': quotation_obj.partner_id.name,
+            'expiration_date': str(quotation_obj.validity_date),
+            'quotation_date': str(quotation_obj.date_order),
+            'order_lines': order_lines_list,
+            'amount_total': quotation_obj.amount_total,
+            'currency': req.env.company.currency_id.symbol
+        }
+
+        return req.make_response(json.dumps({'code': 200, 'quotation_data': data}), headers=[
+            ('Content-Type', 'application/json'),
+            ('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        ])
+
+
+class QuotationActions(http.Controller):
+    @http.route('/cancel-quotation', type='http', auth='public', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    def cancel_quotation(self, **kwargs):
+        form_data = req.httprequest.form
+        quotation_id = int(form_data.get('quotationId'))
+
+        print(quotation_id)
+
+        quotation_obj = req.env['sale.order'].sudo().search([('id', '=', quotation_id)])
+
+        if quotation_obj:
+            quotation_obj.sudo().write({
+                'state': 'cancel',
+            })
+
+            for qi in quotation_obj.invoice_ids:
+                qi.sudo().write({
+                    'state': 'cancel'
+                })
+
+            for qp in quotation_obj.picking_ids:
+                qp.sudo().write({
+                    'state': 'cancel'
+                })
+
+        return req.make_response(json.dumps({'code': 200}), headers=[
             ('Content-Type', 'application/json'),
             ('Access-Control-Allow-Methods', 'POST, OPTIONS')
         ])
