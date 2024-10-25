@@ -2,6 +2,7 @@ import json, base64
 
 from odoo import http
 from odoo.http import request as req
+from datetime import date
 
 
 class LoginPortalUser(http.Controller):
@@ -186,6 +187,21 @@ class CreateQuotation(http.Controller):
                 })
 
             new_quotation.sudo().action_confirm()
+
+            for picking in new_quotation.picking_ids:
+                for pm in picking.move_ids:
+                    pm.sudo().write({
+                        'quantity': pm.product_uom_qty
+                    })
+                picking.sudo().action_confirm()
+                picking.sudo().action_assign()
+                picking.sudo().button_validate()
+
+            invoice = new_quotation.sudo()._create_invoices()
+            invoice.sudo().action_post()
+            invoice.sudo().action_register_payment()
+
+            req.env['account.payment.register'].with_context(active_model='account.move', active_ids=invoice.ids).create({'payment_date': invoice.date}).sudo()._create_payments()
         else:
             new_quotation.sudo().action_confirm()
 
@@ -289,8 +305,9 @@ class QuotationActions(http.Controller):
         quotation_obj = req.env['sale.order'].sudo().search([('id', '=', quotation_id)])
 
         if quotation_obj:
+
             quotation_obj.sudo().write({
-                'state': 'cancel',
+                'state': 'cancel'
             })
 
             for qi in quotation_obj.invoice_ids:
